@@ -1,0 +1,14 @@
+yfinance
+pandas
+numpy
+scikit-learn
+xgboost
+prophet
+mlflow
+fastapi
+uvicorn
+python-dotenv
+statsmodels
+scipy
+pytest
+dvc
