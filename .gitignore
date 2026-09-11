@@ -1,0 +1,21 @@
+# Data & Models
+/data/raw/*
+/data/processed/*
+!/data/raw/.gitkeep
+!/data/processed/.gitkeep
+/models/checkpoints/
+*.pkl
+*.h5
+
+# Environment
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Jupyter
+.ipynb_checkpoints
