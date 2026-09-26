@@ -54,3 +54,15 @@ Proyek ini mengikuti **GitHub Flow**:
   `feat/initial-eda`, `feat/drift-detection`, `feat/model-training`.
 - Perubahan diajukan melalui Pull Request dan direview sebelum di-merge
   ke `main`.
+
+## Pipeline Data Ingestion & Preprocessing 
+
+Pipeline pengumpulan data otomatis harga emas menerapkan prinsip *non-destructive ingestion* dengan stempel waktu dan penjejakan metadata lineage.
+
+### Menjalankan Ingestion Data Mentah
+```bash
+# Menarik data historis 2 tahun (>= 500 baris untuk baseline DVC)
+python src/ingest_data.py --full-history
+
+# Atau penarikan data berkala (1 bulan terakhir)
+python src/ingest_data.py
