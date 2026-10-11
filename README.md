@@ -123,15 +123,36 @@ Lihat `requirements.txt` untuk daftar lengkap (`yfinance`, `pandas`, `numpy`, `r
 
 ## Data Versioning with DVC
 
-Proyek ini menggunakan **DVC (Data Version Control)** untuk melacak perubahan dataset mentah hasil ingestion. Git digunakan untuk menyimpan konfigurasi dan file pointer DVC, sedangkan DVC mengelola versi data.
+### Tujuan
 
-### Inisialisasi DVC
+Proyek ini menggunakan **Data Version Control (DVC)** untuk melacak perubahan dataset mentah harga emas yang diperoleh dari Yahoo Finance. DVC membantu menjaga riwayat dataset agar perubahan data dapat ditelusuri dan digunakan kembali dalam eksperimen machine learning.
+
+### 1. Inisialisasi DVC
+
+DVC diinisialisasi satu kali pada repository proyek menggunakan perintah berikut:
 
 ```bash
 dvc init
 ```
 
-### Melacak dataset awal
+Konfigurasi DVC kemudian disimpan ke Git:
+
+```bash
+git add .dvc .dvcignore .gitignore
+git commit -m "chore: initialize DVC"
+```
+
+### 2. Mengambil dan Melacak Dataset Awal
+
+Dataset diperoleh melalui script ingestion:
+
+```bash
+python src/ingest_data.py
+```
+
+Script mengambil data harga emas dengan ticker `GC=F` dari Yahoo Finance. Setiap eksekusi menghasilkan file CSV bertimestamp dan file metadata lineage dalam folder `data/raw/`.
+
+Dataset kemudian dilacak menggunakan DVC:
 
 ```bash
 dvc add data/raw
@@ -139,24 +160,66 @@ git add data/raw.dvc data/.gitignore
 git commit -m "feat: track initial raw dataset with DVC"
 ```
 
-### Memperbarui versi dataset
+File `data/raw.dvc` berfungsi sebagai pointer metadata versi dataset yang dilacak Git, sedangkan isi dataset dikelola oleh DVC.
 
-Jalankan ingestion untuk menghasilkan file dataset baru, kemudian perbarui pelacakan DVC.
+### 3. Memperbarui Versi Dataset
+
+Untuk membuat versi dataset berikutnya, jalankan ingestion kembali:
 
 ```bash
 python src/ingest_data.py
+```
+
+Setelah file baru terbentuk, perbarui pelacakan DVC:
+
+```bash
 dvc add data/raw
 git add data/raw.dvc data/.gitignore
 git commit -m "feat: update raw dataset version with DVC"
 ```
 
-### Memeriksa perubahan
+Setiap proses ingestion menghasilkan nama file berdasarkan timestamp. Dengan demikian, file dari proses sebelumnya tetap tersedia untuk dibandingkan dengan file yang lebih baru.
+
+### 4. Memeriksa Perubahan Dataset
+
+Gunakan perintah berikut untuk memeriksa konsistensi dataset dan membandingkan versi:
 
 ```bash
 dvc status
 dvc diff HEAD~1 HEAD
+git log --oneline -5
 ```
 
-`dvc status` digunakan untuk memeriksa apakah data lokal sesuai dengan metadata DVC yang tersimpan. `dvc diff HEAD~1 HEAD` digunakan untuk membandingkan versi dataset pada dua commit Git.
+- `dvc status` memeriksa apakah kondisi data lokal sesuai dengan metadata DVC.
+- `dvc diff HEAD~1 HEAD` membandingkan perubahan dataset di antara dua commit Git.
+- `git log --oneline -5` menampilkan riwayat commit terbaru yang mencatat perubahan pointer dataset.
 
-Dataset mentah disimpan sebagai objek yang dikelola DVC, sedangkan `data/raw.dvc` menjadi pointer versi dataset yang dilacak Git. Setiap eksekusi ingestion menghasilkan file bertimestamp dan metadata lineage sehingga perubahan file dapat diaudit.
+### 5. Pentingnya Data Versioning
+
+Data harga emas bersifat dinamis sehingga hasil ingestion dapat berubah dari waktu ke waktu. Tanpa pencatatan versi, eksperimen yang dilakukan pada waktu berbeda dapat menggunakan dataset yang berbeda tanpa disadari.
+
+DVC memungkinkan versi dataset ditelusuri melalui metadata dan riwayat commit Git. Hal ini mendukung reproduksibilitas eksperimen, audit perubahan data, serta analisis perbedaan hasil pelatihan model. Ketika prediksi model berubah, versi dataset, kode, konfigurasi, dan parameter pelatihan dapat diperiksa untuk membantu menelusuri penyebabnya.
+
+### 6. Preprocessing Data
+
+Sebelum digunakan untuk pemodelan, data mentah dapat diproses menggunakan script `src/preprocess.py` sesuai tahapan preprocessing yang tersedia pada proyek, yaitu validasi skema, deduplikasi tanggal, penanganan missing values, konversi satuan harga, dan penandaan potensi lonjakan harga.
+
+Perintah untuk memproses dataset mentah terbaru:
+
+```bash
+python src/preprocess.py
+```
+
+Untuk memproses seluruh file dataset mentah yang tersedia:
+
+```bash
+python src/preprocess.py --all
+```
+
+Hasil preprocessing disimpan di folder `data/processed/` sesuai implementasi script.
+
+### 7. Hasil Praktikum
+
+Pada praktikum, DVC berhasil diinisialisasi dan digunakan untuk melacak dataset mentah. Dua kali proses ingestion menghasilkan file CSV dan metadata lineage dengan timestamp berbeda. Perintah `dvc diff HEAD~1 HEAD` menunjukkan dua file baru pada versi kedua, sedangkan `dvc status` menunjukkan bahwa data lokal sesuai dengan metadata DVC pada saat pemeriksaan.
+
+Hasil tersebut membuktikan adanya perubahan berkas yang tercatat dalam versioning. Namun, penambahan file baru tidak otomatis berarti jumlah observasi unik bertambah atau nilai harga emas berubah.
