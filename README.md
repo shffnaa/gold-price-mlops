@@ -120,3 +120,43 @@ pip install -r requirements.txt
 ```
 
 Lihat `requirements.txt` untuk daftar lengkap (`yfinance`, `pandas`, `numpy`, `requests`).
+
+## Data Versioning with DVC
+
+Proyek ini menggunakan **DVC (Data Version Control)** untuk melacak perubahan dataset mentah hasil ingestion. Git digunakan untuk menyimpan konfigurasi dan file pointer DVC, sedangkan DVC mengelola versi data.
+
+### Inisialisasi DVC
+
+```bash
+dvc init
+```
+
+### Melacak dataset awal
+
+```bash
+dvc add data/raw
+git add data/raw.dvc data/.gitignore
+git commit -m "feat: track initial raw dataset with DVC"
+```
+
+### Memperbarui versi dataset
+
+Jalankan ingestion untuk menghasilkan file dataset baru, kemudian perbarui pelacakan DVC.
+
+```bash
+python src/ingest_data.py
+dvc add data/raw
+git add data/raw.dvc data/.gitignore
+git commit -m "feat: update raw dataset version with DVC"
+```
+
+### Memeriksa perubahan
+
+```bash
+dvc status
+dvc diff HEAD~1 HEAD
+```
+
+`dvc status` digunakan untuk memeriksa apakah data lokal sesuai dengan metadata DVC yang tersimpan. `dvc diff HEAD~1 HEAD` digunakan untuk membandingkan versi dataset pada dua commit Git.
+
+Dataset mentah disimpan sebagai objek yang dikelola DVC, sedangkan `data/raw.dvc` menjadi pointer versi dataset yang dilacak Git. Setiap eksekusi ingestion menghasilkan file bertimestamp dan metadata lineage sehingga perubahan file dapat diaudit.
