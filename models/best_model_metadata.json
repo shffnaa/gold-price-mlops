@@ -1,0 +1,13 @@
+{
+    "best_run_id": "2fcff02052a448f0b584562b81ab44ad",
+    "best_experiment": "rf_medium",
+    "selection_metric": "test_rmse",
+    "test_rmse": 3.876415241586805,
+    "test_mae": 3.2272963803705825,
+    "test_r2": 0.5853383475114564,
+    "target": "target_next_close_usd_per_gram",
+    "dataset_path": "data/processed/gold_features_latest.csv",
+    "dataset_sha256": "9b493bbd541b66d72bfe99a18351614eda44caadeb3a7d01fd475ff920c31e32",
+    "model_file": "models/best_gold_price_model.joblib",
+    "mlflow_experiment": "gold-price-forecasting"
+}

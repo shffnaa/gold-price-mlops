@@ -19,3 +19,10 @@ mlartifacts/
 
 # Jupyter
 .ipynb_checkpoints
+# Local MLflow tracking database
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
+
+# Locally trained model artifacts
+models/*.joblib
