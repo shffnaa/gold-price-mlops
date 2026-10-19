@@ -6,22 +6,24 @@ Membangun pipeline MLOps end-to-end untuk memprediksi harga penutupan emas haria
 
 
 ## Struktur Direktori
-
 ```text
 gold-price-mlops/
 ├── data/
-│   ├── raw/           # Data mentah hasil ingestion dari Yahoo Finance
-│   └── processed/     # Data yang sudah melalui feature engineering
-├── models/            # Model artifacts & checkpoints
-├── src/               # Source code (ingestion, training, inference, drift detection)
-├── config/            # File konfigurasi (parameter model, threshold, dll)
-├── notebooks/         # Eksplorasi data & eksperimen awal
-├── tests/             # Unit test
-├── docs/              # Dokumentasi tambahan
-├── .devcontainer/     # Konfigurasi GitHub Codespaces
-├── .gitignore         # File pengabaian git
-├── requirements.txt   # Dependensi pustaka Python
-└── README.md          # Dokumentasi proyek
+│   ├── raw/
+│   └── processed/
+├── models/
+│   ├── best_model_metadata.json
+│   └── best_gold_price_model.joblib  # lokal, diabaikan Git
+├── src/
+│   ├── ingest_data.py
+│   ├── preprocess.py
+│   └── train.py
+├── reports/
+│   └── Laporan_Teknis_LK06_MLflow.pdf
+├── mlflow.db                         # lokal, diabaikan Git
+├── data/raw.dvc
+├── requirements.txt
+└── README.md
 ```
 
 ## Cara Menjalankan (via GitHub Codespaces)
@@ -223,3 +225,101 @@ Hasil preprocessing disimpan di folder `data/processed/` sesuai implementasi scr
 Pada praktikum, DVC berhasil diinisialisasi dan digunakan untuk melacak dataset mentah. Dua kali proses ingestion menghasilkan file CSV dan metadata lineage dengan timestamp berbeda. Perintah `dvc diff HEAD~1 HEAD` menunjukkan dua file baru pada versi kedua, sedangkan `dvc status` menunjukkan bahwa data lokal sesuai dengan metadata DVC pada saat pemeriksaan.
 
 Hasil tersebut membuktikan adanya perubahan berkas yang tercatat dalam versioning. Namun, penambahan file baru tidak otomatis berarti jumlah observasi unik bertambah atau nilai harga emas berubah.
+
+---
+
+## MLflow Experiment Tracking — LK-06
+
+### Tujuan
+
+Pada tahap LK-06, proyek mengimplementasikan manajemen eksperimen machine learning menggunakan **MLflow** untuk mencatat parameter, metrik evaluasi, dan artefak model. Hasil setiap eksperimen dapat dibandingkan untuk menentukan konfigurasi model terbaik sebelum digunakan pada tahap deployment berikutnya.
+
+### 1. Menjalankan Training
+
+Pastikan dataset hasil preprocessing tersedia di `data/processed/gold_features_latest.csv`. Jalankan training dengan perintah:
+
+```bash
+python src/preprocess.py
+python src/train.py
+```
+
+Skrip `src/train.py` menjalankan sepuluh konfigurasi Random Forest terbaru menggunakan pembagian data secara kronologis, yaitu 400 baris untuk training dan 101 baris untuk testing.
+
+### 2. Integrasi MLflow
+
+Eksperimen dicatat pada experiment `gold-price-forecasting`. MLflow digunakan untuk:
+
+- Mencatat hyperparameter setiap run menggunakan `mlflow.log_params()`.
+- Mencatat metrik evaluasi menggunakan `mlflow.log_metric()`.
+- Menyimpan model sebagai artefak menggunakan `mlflow.sklearn.log_model()`.
+- Membandingkan hasil eksperimen melalui MLflow UI.
+- Mendaftarkan model terpilih pada Model Registry.
+
+Pada saat pengujian, MLflow menampilkan **13 runs**, yang terdiri dari sepuluh run terbaru dan tiga run historis.
+
+### 3. Membuka MLflow UI
+
+Jalankan perintah berikut dari root repository:
+
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db --host 0.0.0.0 --port 5000
+```
+
+Pada GitHub Codespaces, buka tab **Ports**, lalu akses port `5000`. Di halaman experiment `gold-price-forecasting`, hasil run dan metrik dapat diperiksa serta dibandingkan.
+
+### 4. Hasil Eksperimen
+
+Konfigurasi terbaik dari sepuluh run terbaru adalah `rf_trees_300`, berdasarkan nilai test RMSE terendah.
+
+| Parameter / Metrik | Hasil |
+|---|---:|
+| `n_estimators` | 300 |
+| `max_depth` | 10 |
+| `min_samples_leaf` | 2 |
+| `min_samples_split` | 2 |
+| Test RMSE | 3.8682 USD/gram |
+| Test MAE | 3.2219 USD/gram |
+| Test R² | 0.5871 |
+
+RMSE dan MAE mengukur kesalahan prediksi; nilai yang lebih rendah menunjukkan kesalahan yang lebih kecil. R² menggambarkan kemampuan model menjelaskan variasi target.
+
+Metrik tersebut digunakan untuk membandingkan konfigurasi dan memilih model pada eksperimen ini. Karena test set juga digunakan untuk seleksi konfigurasi, evaluasi independen pada data uji terpisah tetap diperlukan sebelum model digunakan di lingkungan produksi.
+
+### 5. Model Registry
+
+Model terpilih berhasil didaftarkan pada MLflow Model Registry dengan informasi berikut:
+
+- **Registered model:** `GoldPriceForecasting`
+- **Version:** `2`
+- **Source run:** `rf_trees_300`
+
+Registrasi ini mendokumentasikan versi model yang dipilih untuk tahap deployment berikutnya. Registrasi model tidak dengan sendirinya berarti model sudah di-deploy ke produksi.
+
+### 6. Model Metadata
+
+Metadata model terbaik disimpan pada:
+
+```text
+models/best_model_metadata.json
+```
+
+File tersebut mendokumentasikan run ID, parameter terbaik, metrik evaluasi, target prediksi, daftar fitur, lokasi dataset, jumlah baris data, dan hash SHA-256 dataset. Metadata ini dapat digunakan untuk membantu pelacakan dan reproduksi konfigurasi model.
+
+Model lokal disimpan pada:
+
+```text
+models/best_gold_price_model.joblib
+```
+
+File model lokal dan database tracking `mlflow.db` dikecualikan dari Git melalui `.gitignore`. Skrip training dan file metadata JSON tetap disimpan dalam repository.
+
+### 7. Laporan Praktikum
+
+Laporan teknis LK-06 mendokumentasikan hasil eksperimen dan bukti dari MLflow UI, meliputi:
+
+1. Daftar experiment runs.
+2. Grafik perbandingan metrik.
+3. Halaman Model Registry yang menampilkan `GoldPriceForecasting` Version 2.
+
+
+

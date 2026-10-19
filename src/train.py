@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 
+import joblib
 import mlflow
 import mlflow.sklearn
 import numpy as np
@@ -38,24 +39,77 @@ FEATURES = [
     "RSI_14",
 ]
 
+# Sepuluh variasi hyperparameter Random Forest.
 CONFIGS = [
     {
         "name": "rf_baseline",
         "n_estimators": 50,
         "max_depth": 5,
         "min_samples_leaf": 2,
+        "min_samples_split": 2,
     },
     {
         "name": "rf_medium",
         "n_estimators": 100,
         "max_depth": 10,
         "min_samples_leaf": 2,
+        "min_samples_split": 2,
     },
     {
         "name": "rf_complex",
         "n_estimators": 200,
         "max_depth": None,
         "min_samples_leaf": 1,
+        "min_samples_split": 2,
+    },
+    {
+        "name": "rf_trees_150",
+        "n_estimators": 150,
+        "max_depth": 10,
+        "min_samples_leaf": 2,
+        "min_samples_split": 2,
+    },
+    {
+        "name": "rf_trees_300",
+        "n_estimators": 300,
+        "max_depth": 10,
+        "min_samples_leaf": 2,
+        "min_samples_split": 2,
+    },
+    {
+        "name": "rf_depth_5_leaf_1",
+        "n_estimators": 100,
+        "max_depth": 5,
+        "min_samples_leaf": 1,
+        "min_samples_split": 2,
+    },
+    {
+        "name": "rf_depth_15",
+        "n_estimators": 100,
+        "max_depth": 15,
+        "min_samples_leaf": 2,
+        "min_samples_split": 2,
+    },
+    {
+        "name": "rf_unlimited_leaf_2",
+        "n_estimators": 100,
+        "max_depth": None,
+        "min_samples_leaf": 2,
+        "min_samples_split": 2,
+    },
+    {
+        "name": "rf_split_5",
+        "n_estimators": 100,
+        "max_depth": 10,
+        "min_samples_leaf": 2,
+        "min_samples_split": 5,
+    },
+    {
+        "name": "rf_leaf_4",
+        "n_estimators": 100,
+        "max_depth": 10,
+        "min_samples_leaf": 4,
+        "min_samples_split": 2,
     },
 ]
 
@@ -71,7 +125,7 @@ def sha256_file(path):
 
 
 # ============================================================
-# 2. SIAPKAN DATA DAN TARGET HARI BERIKUTNYA
+# 2. PERSIAPAN DATA
 # ============================================================
 
 def prepare_data():
@@ -85,7 +139,7 @@ def prepare_data():
     df["Date"] = pd.to_datetime(df["Date"])
     df = df.sort_values("Date").reset_index(drop=True)
 
-    # Target hari berikutnya, bukan harga hari yang sama.
+    # Target adalah harga emas pada hari berikutnya.
     df[TARGET] = df["Close_USD_per_gram"].shift(-1)
 
     # Baris terakhir tidak memiliki target hari berikutnya.
@@ -97,7 +151,7 @@ def prepare_data():
     if len(df) < 30:
         raise ValueError("Data terlalu sedikit untuk eksperimen ini.")
 
-    # Pembagian kronologis: 80% awal untuk train, 20% akhir untuk test.
+    # Split kronologis 80:20 agar urutan waktu tetap terjaga.
     split_idx = int(len(df) * 0.8)
 
     X_train = X.iloc[:split_idx]
@@ -109,7 +163,7 @@ def prepare_data():
 
 
 # ============================================================
-# 3. JALANKAN TIGA EKSPERIMEN MLflow
+# 3. EKSPERIMEN MLFLOW
 # ============================================================
 
 def main():
@@ -118,7 +172,7 @@ def main():
 
     MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Database tracking disimpan di root project.
+    # Gunakan database MLflow lokal yang sudah ada.
     mlflow.set_tracking_uri(
         f"sqlite:///{TRACKING_DB.as_posix()}"
     )
@@ -134,17 +188,19 @@ def main():
     print(f"Train sampai  : {df.iloc[split_idx - 1]['Date'].date()}")
     print(f"Test mulai    : {df.iloc[split_idx]['Date'].date()}")
     print(f"Dataset SHA256: {dataset_hash}")
+    print(f"Jumlah run    : {len(CONFIGS)}")
     print()
 
     results = []
 
-    for config in CONFIGS:
+    for index, config in enumerate(CONFIGS, start=1):
         run_name = config["name"]
 
         model = RandomForestRegressor(
             n_estimators=config["n_estimators"],
             max_depth=config["max_depth"],
             min_samples_leaf=config["min_samples_leaf"],
+            min_samples_split=config["min_samples_split"],
             random_state=42,
             n_jobs=-1,
         )
@@ -159,25 +215,28 @@ def main():
             mae = float(mean_absolute_error(y_test, predictions))
             r2 = float(r2_score(y_test, predictions))
 
-            # Parameter eksperimen.
+            # Catat hyperparameter dan konfigurasi eksperimen.
             mlflow.log_params(config)
             mlflow.log_param("target", TARGET)
             mlflow.log_param("split_strategy", "chronological_80_20")
             mlflow.log_param("random_state", 42)
             mlflow.log_param("feature_count", len(FEATURES))
 
-            # Metrik evaluasi pada data test.
+            # Catat metrik evaluasi pada data test.
             mlflow.log_metric("test_rmse", rmse)
             mlflow.log_metric("test_mae", mae)
             mlflow.log_metric("test_r2", r2)
 
-            # Informasi dataset dan lineage.
-            mlflow.log_param("dataset_path", str(DATA_PATH.relative_to(ROOT)))
+            # Catat identitas dan ukuran dataset.
+            mlflow.log_param(
+                "dataset_path", str(DATA_PATH.relative_to(ROOT))
+            )
             mlflow.log_param("dataset_sha256", dataset_hash)
             mlflow.log_param("dataset_rows", len(df))
             mlflow.log_param("train_rows", len(X_train))
             mlflow.log_param("test_rows", len(X_test))
 
+            # Simpan metadata dataset sebagai artifact.
             mlflow.log_dict(
                 {
                     "dataset_path": str(DATA_PATH.relative_to(ROOT)),
@@ -197,7 +256,7 @@ def main():
                 "dataset_metadata.json",
             )
 
-            # Simpan model sebagai artifact MLflow.
+            # Simpan model ke artifact MLflow.
             mlflow.sklearn.log_model(
                 sk_model=model,
                 name="model",
@@ -213,53 +272,76 @@ def main():
                     "mae": mae,
                     "r2": r2,
                     "model": model,
+                    "params": config.copy(),
                 }
             )
 
-            print(f"Eksperimen: {run_name}")
+            print(f"[{index}/{len(CONFIGS)}] {run_name}")
             print(f"  RMSE: {rmse:.6f}")
             print(f"  MAE : {mae:.6f}")
             print(f"  R2  : {r2:.6f}")
             print(f"  Run : {run.info.run_id}")
             print()
 
-    # Pilih model dengan RMSE test terendah.
+    # Pilih konfigurasi dengan RMSE terendah pada data test.
     best = min(results, key=lambda item: item["rmse"])
 
-    # Simpan salinan lokal model terbaik.
-    import joblib
-
+    # Simpan model terbaik secara lokal.
     model_path = MODEL_DIR / "best_gold_price_model.joblib"
     joblib.dump(best["model"], model_path)
 
     metadata = {
         "best_run_id": best["run_id"],
         "best_experiment": best["name"],
+        "best_parameters": best["params"],
         "selection_metric": "test_rmse",
         "test_rmse": best["rmse"],
         "test_mae": best["mae"],
         "test_r2": best["r2"],
         "target": TARGET,
+        "features": FEATURES,
         "dataset_path": str(DATA_PATH.relative_to(ROOT)),
         "dataset_sha256": dataset_hash,
+        "dataset_rows": len(df),
+        "train_rows": len(X_train),
+        "test_rows": len(X_test),
         "model_file": str(model_path.relative_to(ROOT)),
         "mlflow_experiment": EXPERIMENT_NAME,
     }
 
-    with open(MODEL_DIR / "best_model_metadata.json", "w") as file:
+    metadata_path = MODEL_DIR / "best_model_metadata.json"
+
+    with open(metadata_path, "w", encoding="utf-8") as file:
         json.dump(metadata, file, indent=4)
 
-    print("=" * 55)
-    print("SELESAI: TIGA EKSPERIMEN TELAH DIJALANKAN")
-    print(f"Model terbaik : {best['name']}")
-    print(f"Best RMSE     : {best['rmse']:.6f}")
-    print(f"Best MAE      : {best['mae']:.6f}")
-    print(f"Best R2       : {best['r2']:.6f}")
-    print(f"Model lokal   : {model_path.relative_to(ROOT)}")
-    print(f"Metadata      : models/best_model_metadata.json")
-    print("=" * 55)
-    print("Untuk membuka MLflow UI, jalankan:")
-    print("mlflow ui --backend-store-uri sqlite:///mlflow.db")
+    # Tampilkan ringkasan semua eksperimen yang baru dijalankan.
+    comparison = pd.DataFrame(
+        [
+            {
+                "experiment": item["name"],
+                "rmse": item["rmse"],
+                "mae": item["mae"],
+                "r2": item["r2"],
+            }
+            for item in results
+        ]
+    ).sort_values("rmse")
+
+    print("=" * 65)
+    print("PERBANDINGAN 10 EKSPERIMEN (DIURUTKAN BERDASARKAN RMSE)")
+    print(comparison.to_string(index=False))
+    print()
+    print("MODEL TERBAIK DARI 10 RUN BARU")
+    print(f"Nama eksperimen : {best['name']}")
+    print(f"Run ID          : {best['run_id']}")
+    print(f"Best RMSE       : {best['rmse']:.6f}")
+    print(f"Best MAE        : {best['mae']:.6f}")
+    print(f"Best R2         : {best['r2']:.6f}")
+    print(f"Parameter       : {json.dumps(best['params'])}")
+    print(f"Model lokal     : {model_path.relative_to(ROOT)}")
+    print(f"Metadata        : {metadata_path.relative_to(ROOT)}")
+    print("=" * 65)
+    print("MLflow UI: mlflow ui --backend-store-uri sqlite:///mlflow.db")
 
 
 if __name__ == "__main__":

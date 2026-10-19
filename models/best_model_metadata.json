@@ -1,13 +1,37 @@
 {
-    "best_run_id": "2fcff02052a448f0b584562b81ab44ad",
-    "best_experiment": "rf_medium",
+    "best_run_id": "5b3bf5a6b788487e9fe77b865fd092b5",
+    "best_experiment": "rf_trees_300",
+    "best_parameters": {
+        "name": "rf_trees_300",
+        "n_estimators": 300,
+        "max_depth": 10,
+        "min_samples_leaf": 2,
+        "min_samples_split": 2
+    },
     "selection_metric": "test_rmse",
-    "test_rmse": 3.876415241586805,
-    "test_mae": 3.2272963803705825,
-    "test_r2": 0.5853383475114564,
+    "test_rmse": 3.868152758621823,
+    "test_mae": 3.221942588670893,
+    "test_r2": 0.5871041456862618,
     "target": "target_next_close_usd_per_gram",
+    "features": [
+        "Open",
+        "High",
+        "Low",
+        "Close",
+        "Volume",
+        "Close_USD_per_gram",
+        "is_outlier_shock",
+        "SMA_7",
+        "SMA_30",
+        "Rolling_Std_30",
+        "pct_change",
+        "RSI_14"
+    ],
     "dataset_path": "data/processed/gold_features_latest.csv",
     "dataset_sha256": "9b493bbd541b66d72bfe99a18351614eda44caadeb3a7d01fd475ff920c31e32",
+    "dataset_rows": 501,
+    "train_rows": 400,
+    "test_rows": 101,
     "model_file": "models/best_gold_price_model.joblib",
     "mlflow_experiment": "gold-price-forecasting"
 }
