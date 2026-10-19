@@ -18,8 +18,6 @@ gold-price-mlops/
 │   ├── ingest_data.py
 │   ├── preprocess.py
 │   └── train.py
-├── reports/
-│   └── Laporan_Teknis_LK06_MLflow.pdf
 ├── mlflow.db                         # lokal, diabaikan Git
 ├── data/raw.dvc
 ├── requirements.txt
