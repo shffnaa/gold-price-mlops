@@ -1,0 +1,5 @@
+outs:
+- md5: 24b34e8af3ec2be19353c8251f22eaa5
+  size: 565
+  hash: md5
+  path: production_model_dvc.yaml
