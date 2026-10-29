@@ -1,0 +1,14 @@
+model_name: GoldPriceForecasting
+production_alias: production
+production_version: 2
+source_run_id: 5b3bf5a6b788487e9fe77b865fd092b5
+source_experiment: rf_trees_300
+selection_metric: test_rmse
+test_rmse: 3.868152758621823
+test_mae: 3.221942588670893
+test_r2: 0.5871041456862618
+dataset_path: data/processed/gold_features_latest.csv
+dataset_sha256: 9b493bbd541b66d72bfe99a18351614eda44caadeb3a7d01fd475ff920c31e32
+features_metadata_path: models/best_model_metadata.json
+artifact_uri: models:/GoldPriceForecasting@production
+registry_tracking_uri: sqlite:///mlflow.db
