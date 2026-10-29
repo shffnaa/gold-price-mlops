@@ -321,3 +321,60 @@ Laporan teknis LK-06 mendokumentasikan hasil eksperimen dan bukti dari MLflow UI
 
 
 
+
+## LK-07 — Model Registry, Versioning, dan Kesiapan Inferensi
+
+### 1. Model Registry dan Versioning
+
+Model terdaftar pada MLflow Model Registry dengan nama `GoldPriceForecasting`. Eksperimen LK-07 menghasilkan versi model baru sehingga riwayat versi dapat digunakan untuk menelusuri perubahan model.
+
+Versi yang tercatat dalam registry:
+
+| Versi | Source run | Test RMSE |
+|---|---|---:|
+| Version 1 | `rf_medium` | 3.8764 |
+| Version 2 | `rf_trees_300` | 3.8682 |
+| Version 3 | `lk07_rf_trees_250` | 3.8767 |
+
+Version 2 dipilih sebagai model aktif karena memiliki test RMSE terendah di antara ketiga versi tersebut.
+
+### 2. Alias Model Aktif
+
+MLflow yang digunakan dalam praktikum ini mendukung alias model. Alias `staging` dan `production` diarahkan ke `GoldPriceForecasting` Version 2.
+
+Metadata versi aktif disimpan pada:
+
+```text
+models/production_model.yaml
+```
+
+File tersebut mencatat nama model, alias production, versi model, source run ID, metrik evaluasi, referensi dataset, dan URI model registry.
+
+### 3. Verifikasi Inferensi
+
+Model production diuji dengan memuat model melalui URI alias:
+
+```python
+model = mlflow.pyfunc.load_model(
+    "models:/GoldPriceForecasting@production"
+)
+```
+
+Pengujian berhasil dilakukan menggunakan tiga baris input dari dataset fitur. Model menghasilkan tiga prediksi harga emas dalam USD/gram.
+
+Keberhasilan pemuatan model dan keluaran prediksi menunjukkan bahwa versi yang dirujuk alias `production` dapat digunakan untuk inferensi. Hasil ini merupakan pengujian inferensi dasar, bukan bukti bahwa model telah di-deploy sebagai layanan produksi.
+
+### 4. Catatan DVC dan Reproduksibilitas
+
+Status DVC menunjukkan bahwa data dan pipeline yang dikonfigurasi berada dalam kondisi up to date pada lingkungan lokal. Namun, belum ada DVC remote yang dikonfigurasi, sehingga artefak atau cache DVC lokal belum disinkronkan ke penyimpanan remote.
+
+Database tracking MLflow `mlflow.db` juga disimpan secara lokal dan dikecualikan dari Git. Untuk mereproduksi hasil pada lingkungan lain, konfigurasi tracking dan ketersediaan artefak model perlu disiapkan kembali.
+
+### 5. Bukti Laporan LK-07
+
+Laporan teknis LK-07 perlu menyertakan bukti berikut:
+
+1. MLflow Model Registry yang menampilkan versi model.
+2. Alias `staging` dan `production` yang mengarah ke Version 2.
+3. Terminal yang menunjukkan inferensi production berhasil.
+4. File `models/production_model.yaml` sebagai metadata versi model aktif.
