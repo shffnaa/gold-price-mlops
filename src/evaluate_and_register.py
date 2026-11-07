@@ -1,3 +1,4 @@
+
 import json
 import sys
 from pathlib import Path
@@ -29,10 +30,50 @@ MODEL_NAME = "GoldPriceForecasting"
 
 # Threshold berdasarkan LK-01
 MAX_ACCEPTABLE_RMSE = 0.95
+MIN_RELATIVE_IMPROVEMENT = 0.02
 
 
 # =====================================================
-# 2. LOAD DATA DAN MODEL
+# 2. QUALITY GATE
+# =====================================================
+
+def evaluate_quality_gates(rmse, baseline_rmse=None):
+    absolute_gate_passed = rmse <= MAX_ACCEPTABLE_RMSE
+
+    required_rmse = None
+
+    if baseline_rmse is None:
+        relative_gate_status = "NOT_EVALUATED"
+    else:
+        required_rmse = baseline_rmse * (1 - MIN_RELATIVE_IMPROVEMENT)
+        relative_gate_status = (
+            "PASS" if rmse < required_rmse else "FAIL"
+        )
+
+    passed = (
+        absolute_gate_passed
+        and relative_gate_status == "PASS"
+    )
+
+    if not absolute_gate_passed:
+        status = "FAIL"
+    elif relative_gate_status == "NOT_EVALUATED":
+        status = "BLOCKED"
+    else:
+        status = "PASS" if passed else "FAIL"
+
+    return {
+        "absolute_gate_passed": absolute_gate_passed,
+        "relative_gate_status": relative_gate_status,
+        "baseline_rmse": baseline_rmse,
+        "required_rmse": required_rmse,
+        "passed": passed,
+        "status": status,
+    }
+
+
+# =====================================================
+# 3. MAIN EVALUATION
 # =====================================================
 
 def main():
@@ -56,11 +97,10 @@ def main():
     y_test = test[target]
 
     model = joblib.load(MODEL_PATH)
-
     predictions = model.predict(X_test)
 
     # =================================================
-    # 3. HITUNG METRIK
+    # 4. HITUNG METRIK
     # =================================================
 
     rmse = float(np.sqrt(mean_squared_error(y_test, predictions)))
@@ -74,27 +114,30 @@ def main():
     print(f"Threshold  : RMSE <= {MAX_ACCEPTABLE_RMSE}")
 
     # =================================================
-    # 4. EVALUASI PASS / FAIL
+    # 5. EVALUASI QUALITY GATE
     # =================================================
 
-    passed = rmse <= MAX_ACCEPTABLE_RMSE
+    gate_results = evaluate_quality_gates(rmse)
 
-    status = "PASS" if passed else "FAIL"
+    absolute_gate_passed = gate_results["absolute_gate_passed"]
+    relative_gate_status = gate_results["relative_gate_status"]
+    baseline_rmse = gate_results["baseline_rmse"]
+    required_rmse = gate_results["required_rmse"]
+    passed = gate_results["passed"]
+    status = gate_results["status"]
 
     print(f"\nEvaluation status: {status}")
 
     # =================================================
-    # 5. SIAPKAN DATABASE MLFLOW
+    # 6. MLFLOW
     # =================================================
 
     mlflow.set_tracking_uri(TRACKING_URI)
     mlflow.set_experiment(EXPERIMENT_NAME)
 
     client = MlflowClient()
-
     registered_version = None
 
-    # Catat hasil evaluasi, termasuk jika model gagal.
     with mlflow.start_run(run_name="lk08_automated_evaluation") as run:
 
         mlflow.log_metrics({
@@ -105,16 +148,18 @@ def main():
 
         mlflow.log_params({
             "evaluation_threshold_rmse": MAX_ACCEPTABLE_RMSE,
+            "minimum_relative_improvement": MIN_RELATIVE_IMPROVEMENT,
+            "absolute_gate_status": (
+                "PASS" if absolute_gate_passed else "FAIL"
+            ),
+            "relative_gate_status": relative_gate_status,
             "evaluation_status": status,
             "source_run_id": metadata["best_run_id"],
         })
 
         evaluation_run_id = run.info.run_id
 
-        # =============================================
-        # 6. REGISTRASI HANYA JIKA PASS
-        # =============================================
-
+        # Registrasi hanya jika seluruh quality gate PASS
         if passed:
             print("\nModel memenuhi threshold. Registrasi dimulai.")
 
@@ -140,7 +185,7 @@ def main():
             print("Model stage   : Staging")
 
         else:
-            print("\nModel TIDAK memenuhi threshold.")
+            print("\nModel belum memenuhi seluruh quality gate.")
             print("Registrasi ke Model Registry dilewati.")
 
     # =================================================
@@ -160,8 +205,23 @@ def main():
             "mae": mae,
             "r2": r2,
         },
-        "thresholds": {
-            "max_acceptable_rmse": MAX_ACCEPTABLE_RMSE,
+        "quality_gates": {
+            "absolute_rmse": {
+                "status": "PASS" if absolute_gate_passed else "FAIL",
+                "actual": rmse,
+                "maximum": MAX_ACCEPTABLE_RMSE,
+            },
+            "relative_improvement": {
+                "status": relative_gate_status,
+                "baseline_rmse": baseline_rmse,
+                "required_rmse": required_rmse,
+                "minimum_improvement": MIN_RELATIVE_IMPROVEMENT,
+                "reason": (
+                    "Baseline LK-06 belum tersedia untuk diuji pada dataset LK-08 yang sama."
+                    if baseline_rmse is None
+                    else "RMSE dibandingkan dengan baseline menggunakan batas peningkatan minimal 2%."
+                ),
+            },
         },
         "evaluation_run_id": evaluation_run_id,
         "source_run_id": metadata["best_run_id"],
@@ -173,7 +233,6 @@ def main():
 
     print(f"\nLaporan tersimpan: {REPORT_PATH}")
 
-    # Exit code 1 membuat pipeline CI gagal jika evaluasi gagal.
     if not passed:
         print("\nPIPELINE FAILED: Model belum memenuhi kriteria LK-01.")
         sys.exit(1)
