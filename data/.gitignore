@@ -1,1 +1,3 @@
-/raw
+/raw/*
+!/raw/gold_raw_20260926_081239.csv
+!/raw/gold_raw_20260926_081239.csv.meta.json

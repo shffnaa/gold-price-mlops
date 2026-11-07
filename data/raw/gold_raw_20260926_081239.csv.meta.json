@@ -1,0 +1,8 @@
+{
+  "source_url": "https://query1.finance.yahoo.com (diakses via pustaka yfinance)",
+  "ticker": "GC=F",
+  "accessed_at": "2026-09-26T08:12:39.086650+00:00",
+  "period_requested": "2y (offline demo dataset)",
+  "record_count": 620,
+  "output_file": "gold_raw_20260926_081239.csv"
+}

@@ -1,0 +1,56 @@
+name: MLOps Automation Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  mlops-pipeline:
+    name: Test, Train, Evaluate, and Register
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pandas numpy scikit-learn mlflow pyarrow pytest
+
+      - name: Run Automated Tests
+        run: |
+          python -m pytest -v
+
+      - name: Run Data Preprocessing
+        run: |
+          python src/preprocess.py
+
+      - name: Train Models
+        run: |
+          python src/train.py
+
+      - name: Evaluate Model and Register if Passed
+        run: |
+          python src/evaluate_and_register.py
+
+      - name: Upload Evaluation Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: model-evaluation-report
+          path: reports/evaluation.json
+          if-no-files-found: ignore
