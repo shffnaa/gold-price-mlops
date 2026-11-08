@@ -1,4 +1,4 @@
-
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -28,14 +28,23 @@ TRACKING_URI = f"sqlite:///{ROOT / 'mlflow.db'}"
 EXPERIMENT_NAME = "gold-price-forecasting"
 MODEL_NAME = "GoldPriceForecasting"
 
-# Threshold berdasarkan LK-01
 MAX_ACCEPTABLE_RMSE = 0.95
 MIN_RELATIVE_IMPROVEMENT = 0.02
 
 
 # =====================================================
-# 2. QUALITY GATE
+# 2. HELPER FUNCTIONS
 # =====================================================
+
+def sha256_file(path):
+    digest = hashlib.sha256()
+
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(8192), b""):
+            digest.update(chunk)
+
+    return digest.hexdigest()
+
 
 def evaluate_quality_gates(rmse, baseline_rmse=None):
     absolute_gate_passed = rmse <= MAX_ACCEPTABLE_RMSE
@@ -82,7 +91,24 @@ def main():
     with open(METADATA_PATH, encoding="utf-8") as file:
         metadata = json.load(file)
 
+    # Pastikan dataset sama dengan dataset saat training.
+    current_dataset_hash = sha256_file(DATA_PATH)
+
+    if current_dataset_hash != metadata["dataset_sha256"]:
+        raise ValueError(
+            "Dataset evaluation berbeda dengan dataset training!"
+        )
+
+    print("Dataset integrity check: PASSED")
+
+    # Pastikan skema split sesuai dengan training terbaru.
+    if metadata.get("split_strategy") != "chronological_64_16_20":
+        raise ValueError("Strategi pembagian data tidak sesuai!")
+
+    # Urutan data harus sama dengan proses training.
     df = pd.read_csv(DATA_PATH)
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date").reset_index(drop=True)
 
     features = metadata["features"]
     target = "target_next_close_usd_per_gram"
@@ -90,11 +116,21 @@ def main():
     df[target] = df["Close_USD_per_gram"].shift(-1)
     df = df.dropna(subset=features + [target]).copy()
 
-    split_index = int(len(df) * 0.8)
-    test = df.iloc[split_index:]
+    # Training: 64%, validation: 16%, testing: 20%.
+    # Test dimulai setelah 80% data pertama.
+    validation_end = int(len(df) * 0.80)
+    test = df.iloc[validation_end:]
 
     X_test = test[features]
     y_test = test[target]
+
+    # Verifikasi jumlah data test dengan metadata training.
+    if len(X_test) != metadata["test_rows"]:
+        raise ValueError(
+            f"Jumlah data test tidak sesuai! "
+            f"Metadata: {metadata['test_rows']}, "
+            f"aktual: {len(X_test)}"
+        )
 
     model = joblib.load(MODEL_PATH)
     predictions = model.predict(X_test)
@@ -112,9 +148,10 @@ def main():
     print(f"R2         : {r2:.6f}")
     print(f"Data test  : {len(test)} baris")
     print(f"Threshold  : RMSE <= {MAX_ACCEPTABLE_RMSE}")
+    print("Split      : Chronological 64:16:20")
 
     # =================================================
-    # 5. EVALUASI QUALITY GATE
+    # 5. QUALITY GATE
     # =================================================
 
     gate_results = evaluate_quality_gates(rmse)
@@ -155,11 +192,11 @@ def main():
             "relative_gate_status": relative_gate_status,
             "evaluation_status": status,
             "source_run_id": metadata["best_run_id"],
+            "split_strategy": metadata["split_strategy"],
         })
 
         evaluation_run_id = run.info.run_id
 
-        # Registrasi hanya jika seluruh quality gate PASS
         if passed:
             print("\nModel memenuhi threshold. Registrasi dimulai.")
 
@@ -205,6 +242,8 @@ def main():
             "mae": mae,
             "r2": r2,
         },
+        "test_rows": len(test),
+        "split_strategy": metadata["split_strategy"],
         "quality_gates": {
             "absolute_rmse": {
                 "status": "PASS" if absolute_gate_passed else "FAIL",
@@ -217,9 +256,11 @@ def main():
                 "required_rmse": required_rmse,
                 "minimum_improvement": MIN_RELATIVE_IMPROVEMENT,
                 "reason": (
-                    "Baseline LK-06 belum tersedia untuk diuji pada dataset LK-08 yang sama."
+                    "Baseline LK-06 belum tersedia untuk dibandingkan "
+                    "pada dataset LK-08 yang sama."
                     if baseline_rmse is None
-                    else "RMSE dibandingkan dengan baseline menggunakan batas peningkatan minimal 2%."
+                    else "RMSE dibandingkan dengan baseline menggunakan "
+                    "batas peningkatan minimal 2%."
                 ),
             },
         },
@@ -234,7 +275,7 @@ def main():
     print(f"\nLaporan tersimpan: {REPORT_PATH}")
 
     if not passed:
-        print("\nPIPELINE FAILED: Model belum memenuhi kriteria LK-01.")
+        print("\nPIPELINE FAILED: Model belum memenuhi kriteria quality gate.")
         sys.exit(1)
 
     print("\nPIPELINE PASSED: Model berhasil masuk Staging.")

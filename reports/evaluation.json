@@ -1,0 +1,31 @@
+{
+    "status": "FAIL",
+    "registered": false,
+    "model_name": null,
+    "model_version": null,
+    "model_stage": null,
+    "metrics": {
+        "rmse": 2.0057469179154546,
+        "mae": 1.6067319456808449,
+        "r2": 0.9368938360452185
+    },
+    "test_rows": 124,
+    "split_strategy": "chronological_64_16_20",
+    "quality_gates": {
+        "absolute_rmse": {
+            "status": "FAIL",
+            "actual": 2.0057469179154546,
+            "maximum": 0.95
+        },
+        "relative_improvement": {
+            "status": "NOT_EVALUATED",
+            "baseline_rmse": null,
+            "required_rmse": null,
+            "minimum_improvement": 0.02,
+            "reason": "Baseline LK-06 belum tersedia untuk dibandingkan pada dataset LK-08 yang sama."
+        }
+    },
+    "evaluation_run_id": "7794df86df094df986ddbdb77588e056",
+    "source_run_id": "0b7ed7291d304e4a8b93c3fce890c3f9",
+    "dataset_sha256": "5efd474ae243626af002bcf0b5170bfba33a93c3293a3e341e55a80b9147b83d"
+}
