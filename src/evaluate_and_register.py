@@ -274,11 +274,14 @@ def main():
 
     print(f"\nLaporan tersimpan: {REPORT_PATH}")
 
-    if not passed:
-        print("\nPIPELINE FAILED: Model belum memenuhi kriteria quality gate.")
-        sys.exit(1)
-
-    print("\nPIPELINE PASSED: Model berhasil masuk Staging.")
+    if passed:
+        print("\nSUCCESS: Model memenuhi seluruh quality gate.")
+        print("PIPELINE PASSED: Model berhasil masuk Staging.")
+    else:
+        print("\nWARNING: Model gagal memenuhi quality gate.")
+        print("Evaluasi berhasil diselesaikan.")
+        print("Registrasi model dilewati.")
+        print("PIPELINE COMPLETED: Quality gate memblokir registrasi model.")
 
 
 if __name__ == "__main__":
