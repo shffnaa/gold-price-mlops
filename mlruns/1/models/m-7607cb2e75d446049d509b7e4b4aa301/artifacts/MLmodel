@@ -1,0 +1,24 @@
+artifact_path: /workspaces/gold-price-mlops/mlruns/1/models/m-7607cb2e75d446049d509b7e4b4aa301/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.11.18
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.1
+    skops_trusted_types:
+    - sklearn.tree._tree.Tree
+mlflow_version: 3.18.0
+model_id: m-7607cb2e75d446049d509b7e4b4aa301
+model_size_bytes: 3107845
+model_uuid: m-7607cb2e75d446049d509b7e4b4aa301
+prompts: null
+run_id: dbc961c710e34a4db6979ef96fb485a7
+utc_time_created: '2026-11-21 11:13:55.551081'

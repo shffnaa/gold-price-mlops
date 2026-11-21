@@ -20,6 +20,22 @@
     }
   },
   "postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt",
-  "forwardPorts": [8000, 5000, 8888],
-  "remoteUser": "vscode"
+  "forwardPorts": [
+    8000,
+    5000,
+    8501,
+    8888
+  ],
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": false,
+      "dockerDashComposeVersion": "v2"
+    }
+  },
+  "runArgs": [
+    "--init",
+    "--privileged"
+  ]
 }

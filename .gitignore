@@ -26,3 +26,14 @@ mlflow.db-wal
 
 # Locally trained model artifacts
 models/*.joblib
+
+# Keep only the legacy model artifact required by Docker migration
+!mlruns/
+mlruns/*
+!mlruns/1/
+mlruns/1/*
+!mlruns/1/models/
+mlruns/1/models/*
+!mlruns/1/models/m-7607cb2e75d446049d509b7e4b4aa301/
+mlruns/1/models/m-7607cb2e75d446049d509b7e4b4aa301/*
+!mlruns/1/models/m-7607cb2e75d446049d509b7e4b4aa301/artifacts/

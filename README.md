@@ -378,3 +378,213 @@ Laporan teknis LK-07 perlu menyertakan bukti berikut:
 2. Alias `staging` dan `production` yang mengarah ke Version 2.
 3. Terminal yang menunjukkan inferensi production berhasil.
 4. File `models/production_model.yaml` sebagai metadata versi model aktif.
+
+---
+
+## LK-09 — Docker Compose Orchestration
+
+### 1. Tujuan
+
+Pada tahap LK-09, proyek dikembangkan menggunakan Docker Compose untuk mengorkestrasi seluruh komponen aplikasi MLOps dalam satu lingkungan terintegrasi. Implementasi ini bertujuan menyederhanakan proses deployment, mengatur komunikasi antarlayanan, serta menjaga persistensi data menggunakan Docker volumes.
+
+Arsitektur aplikasi terdiri dari PostgreSQL, MLflow Tracking Server, proses inisialisasi model, FastAPI sebagai layanan inferensi, dan Streamlit sebagai antarmuka pengguna.
+
+### 2. Arsitektur Services
+
+Docker Compose mengelola lima service utama:
+
+| Service | Fungsi | Port |
+|---|---|---|
+| `postgres` | Menyimpan metadata MLflow menggunakan PostgreSQL | 5432 (internal) |
+| `mlflow-server` | Menyediakan MLflow Tracking Server dan Model Registry | 5000 |
+| `model-init` | Memigrasikan model lama ke MLflow yang menggunakan PostgreSQL | - |
+| `api-service` | Menyediakan REST API untuk inferensi menggunakan FastAPI | 8000 |
+| `dashboard` | Menyediakan antarmuka prediksi menggunakan Streamlit | 8501 |
+
+Seluruh service dihubungkan melalui custom bridge network bernama `goldprice-network`.
+
+Komunikasi antarkontainer menggunakan nama service sebagai hostname (service discovery), sehingga setiap service dapat berkomunikasi tanpa perlu mengetahui alamat IP masing-masing.
+
+Contoh komunikasi:
+- API mengakses MLflow melalui `http://mlflow-server:5000`.
+- Dashboard mengakses API melalui `http://api-service:8000`.
+- MLflow mengakses PostgreSQL melalui hostname service `postgres`.
+
+### 3. Docker Network dan Persistent Storage
+
+#### Custom Bridge Network
+
+Docker Compose menggunakan network `goldprice-network` dengan driver `bridge`. Network ini memungkinkan seluruh container berkomunikasi secara internal menggunakan nama service.
+
+#### Named Volumes
+
+Dua named volume digunakan untuk menjaga persistensi data:
+
+| Volume | Mount Point | Fungsi |
+|---|---|---|
+| `postgres_data` | `/var/lib/postgresql/data` | Menyimpan data PostgreSQL secara persisten |
+| `mlflow_artifacts` | `/mlartifacts` | Menyimpan artefak model MLflow secara persisten |
+
+Dengan named volume, data tetap tersedia ketika container dihentikan atau dibuat ulang, selama volume tidak dihapus.
+
+### 4. Konfigurasi Environment
+
+Konfigurasi environment disimpan dalam file `.env` agar informasi koneksi dan kredensial tidak ditulis langsung pada konfigurasi Docker Compose.
+
+Contoh konfigurasi:
+
+```env
+POSTGRES_DB=mlflow
+POSTGRES_USER=mlflow
+POSTGRES_PASSWORD=change_this_password
+
+MLFLOW_TRACKING_URI=http://mlflow-server:5000
+MLFLOW_MODEL_NAME=GoldPriceForecasting
+MLFLOW_MODEL_VERSION=1
+```
+
+Repository menyediakan file `.env.example` sebagai template konfigurasi. File `.env` lokal dikecualikan dari Git untuk menjaga keamanan kredensial.
+
+### 5. Menjalankan Aplikasi dengan Docker Compose
+
+Pastikan Docker dan Docker Compose tersedia pada environment yang digunakan.
+
+Pada GitHub Codespaces, buat Codespace dari branch `main`, kemudian siapkan konfigurasi environment:
+
+```bash
+cp .env.example .env
+```
+
+Sesuaikan nilai `POSTGRES_PASSWORD` pada file `.env`.
+
+Setelah konfigurasi selesai, jalankan seluruh service dari root repository menggunakan satu perintah:
+
+```bash
+docker compose up -d
+```
+
+Docker Compose akan membangun image yang diperlukan dan menjalankan seluruh service sesuai konfigurasi dependensi.
+
+Untuk memeriksa status container:
+
+```bash
+docker compose ps -a
+```
+
+### 6. Dependency dan Health Check
+
+Konfigurasi `depends_on` digunakan untuk mengatur urutan startup antarlayanan.
+
+Alur dependensi aplikasi:
+
+1. PostgreSQL dijalankan dan menunggu hingga health check menunjukkan status healthy.
+2. MLflow Tracking Server dijalankan setelah PostgreSQL sehat.
+3. `model-init` dijalankan setelah MLflow sehat untuk memigrasikan model lama ke Model Registry.
+4. API dijalankan setelah proses inisialisasi model berhasil diselesaikan.
+5. Dashboard dijalankan setelah API berstatus healthy.
+
+Health check diterapkan pada PostgreSQL, MLflow, dan API untuk memastikan layanan siap digunakan.
+
+Service `model-init` merupakan proses sekali jalan (one-shot container). Oleh karena itu, status `Exited (0)` menunjukkan proses migrasi model berhasil diselesaikan, bukan kegagalan container.
+
+### 7. Akses Aplikasi
+
+Setelah seluruh service berjalan, aplikasi dapat diakses melalui alamat berikut:
+
+| Komponen | Alamat |
+|---|---|
+| Streamlit Dashboard | http://localhost:8501 |
+| FastAPI | http://localhost:8000 |
+| FastAPI Swagger UI | http://localhost:8000/docs |
+| MLflow UI | http://localhost:5000 |
+
+Pada GitHub Codespaces, akses layanan melalui tab **Ports** dan gunakan alamat forwarding yang disediakan oleh Codespaces.
+
+### 8. Verifikasi Implementasi
+
+#### a. Pemeriksaan Status Container
+
+Perintah:
+
+```bash
+docker compose ps -a
+```
+
+Hasil implementasi menunjukkan:
+- PostgreSQL berstatus `Up (healthy)`.
+- MLflow berstatus `Up (healthy)`.
+- API berstatus `Up (healthy)`.
+- Dashboard berstatus `Up`.
+- Model initialization berstatus `Exited (0)`.
+
+#### b. Pengujian Komunikasi API dengan MLflow
+
+Pengujian dilakukan dari dalam container API untuk memastikan komunikasi antarkontainer melalui custom bridge network berjalan dengan baik.
+
+```bash
+docker compose exec api-service python -c "import urllib.request; r=urllib.request.urlopen('http://mlflow-server:5000/health'); print('MLflow response:', r.status); print(r.read().decode())"
+```
+
+Hasil pengujian:
+
+```text
+MLflow response: 200
+OK
+```
+
+Respons HTTP 200 menunjukkan bahwa API berhasil mengakses MLflow menggunakan nama service `mlflow-server`.
+
+#### c. Pemeriksaan Health API
+
+Perintah:
+
+```bash
+curl http://localhost:8000/health
+```
+
+Hasil pengujian:
+
+```json
+{
+  "status": "healthy",
+  "model_loaded": true,
+  "tracking_uri": "http://mlflow-server:5000"
+}
+```
+
+Hasil tersebut menunjukkan API berjalan dengan baik dan model berhasil dimuat dari MLflow Model Registry.
+
+#### d. Pengujian Inferensi
+
+Pengujian inferensi dilakukan melalui FastAPI Swagger UI pada endpoint `POST /predict`.
+
+API berhasil memberikan respons HTTP 200 dan menghasilkan prediksi harga emas beserta informasi nama model, versi model, dan satuan prediksi.
+
+Pengujian juga dilakukan melalui Streamlit Dashboard. Hasil prediksi Dashboard sesuai dengan hasil API ketika menggunakan input fitur yang sama.
+
+### 9. Menghentikan Aplikasi
+
+Untuk menghentikan dan menghapus container serta network tanpa menghapus persistent volume, gunakan:
+
+```bash
+docker compose down
+```
+
+Named volume PostgreSQL dan MLflow tetap dipertahankan sehingga data dapat digunakan kembali ketika aplikasi dijalankan.
+
+Hindari penggunaan `docker compose down -v` apabila data pada persistent volume masih ingin dipertahankan.
+
+### 10. Hasil Implementasi
+
+Implementasi Docker Compose berhasil mengorkestrasi lima service yang saling terintegrasi dalam proyek Gold Price Forecasting.
+
+Hasil pengujian menunjukkan bahwa:
+1. PostgreSQL berhasil berjalan sebagai backend penyimpanan metadata MLflow.
+2. MLflow Tracking Server berhasil terhubung dengan PostgreSQL.
+3. Model berhasil dimigrasikan dan didaftarkan pada MLflow Model Registry dengan nama `GoldPriceForecasting` versi 1 dan status `READY`.
+4. FastAPI berhasil memuat model dari MLflow dan menyediakan layanan inferensi.
+5. Streamlit Dashboard berhasil terhubung dengan API dan menampilkan hasil prediksi.
+6. Komunikasi antarkontainer berhasil dilakukan melalui custom bridge network menggunakan nama service.
+7. Named volume berhasil dikonfigurasi untuk menjaga persistensi data PostgreSQL dan artefak MLflow.
+
+Dengan implementasi ini, seluruh komponen aplikasi dapat dijalankan melalui satu konfigurasi Docker Compose. Hal tersebut membuat proses deployment, pengelolaan layanan, dan reproduksi lingkungan aplikasi menjadi lebih terstruktur.

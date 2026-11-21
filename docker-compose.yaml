@@ -1,0 +1,129 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: goldprice-postgres
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - goldprice-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mlflow-server:
+    build:
+      context: .
+      dockerfile: docker/mlflow.Dockerfile
+    container_name: goldprice-mlflow
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - mlflow
+      - server
+      - --backend-store-uri
+      - postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - --serve-artifacts
+      - --artifacts-destination
+      - /mlartifacts
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5000"
+      - --allowed-hosts
+      - "mlflow-server:5000,localhost:5000,127.0.0.1:5000,*.app.github.dev"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_artifacts:/mlartifacts
+    networks:
+      - goldprice-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:5000/health', timeout=5)"
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  model-init:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: goldprice-model-init
+    env_file:
+      - .env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+    command: ["python", "scripts/register_legacy_model.py"]
+    volumes:
+      - ./mlruns:/legacy_mlruns:ro
+    networks:
+      - goldprice-network
+    depends_on:
+      mlflow-server:
+        condition: service_healthy
+    restart: "no"
+
+  api-service:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: goldprice-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+    ports:
+      - "8000:8000"
+    networks:
+      - goldprice-network
+    depends_on:
+      model-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=5)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/dashboard.Dockerfile
+    container_name: goldprice-dashboard
+    restart: unless-stopped
+    environment:
+      API_URL: http://api-service:8000
+    ports:
+      - "8501:8501"
+    networks:
+      - goldprice-network
+    depends_on:
+      api-service:
+        condition: service_healthy
+
+networks:
+  goldprice-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mlflow_artifacts:
