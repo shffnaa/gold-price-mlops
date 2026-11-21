@@ -226,7 +226,7 @@ Hasil tersebut membuktikan adanya perubahan berkas yang tercatat dalam versionin
 
 ---
 
-## MLflow Experiment Tracking — LK-06
+## LK-06 — MLflow Experiment Tracking 
 
 ### Tujuan
 
@@ -379,6 +379,122 @@ Laporan teknis LK-07 perlu menyertakan bukti berikut:
 3. Terminal yang menunjukkan inferensi production berhasil.
 4. File `models/production_model.yaml` sebagai metadata versi model aktif.
 
+---
+## LK-08 — Code as a Trigger: MLOps Automation Pipeline
+
+## 1. Tujuan
+
+Pada tahap LK-08, proyek mengimplementasikan otomatisasi pipeline MLOps menggunakan GitHub Actions. Otomatisasi ini bertujuan menjalankan serangkaian proses machine learning ketika terdapat perubahan kode pada repository, sehingga proses pengujian, preprocessing, training, evaluasi, dan pengelolaan model dapat dilakukan secara terstruktur dan berulang.
+
+Pipeline dirancang menggunakan pendekatan Code as a Trigger, yaitu perubahan kode yang di-push ke repository atau Pull Request dapat memicu workflow secara otomatis.
+
+## 2. Konfigurasi GitHub Actions
+
+Workflow otomatisasi disimpan pada:
+
+`.github/workflows/mlops-automation.yaml`
+
+Workflow menggunakan GitHub Actions dengan trigger:
+- `push` ke branch `main`.
+- `pull_request` ke branch `main`.
+
+Ketika trigger terpenuhi, GitHub Actions menjalankan tahapan pipeline secara berurutan.
+
+## 3. Tahapan Automation Pipeline
+
+Pipeline MLOps terdiri dari beberapa tahapan berikut:
+
+**a. Checkout Repository**
+
+GitHub Actions mengambil source code dari repository agar seluruh proses dapat dijalankan pada environment runner.
+
+**b. Setup Python Environment**
+
+Workflow menyiapkan versi Python dan menginstal dependencies yang dibutuhkan oleh proyek melalui file requirements.
+
+**c. Automated Testing**
+
+Pipeline menjalankan pengujian otomatis menggunakan pytest untuk memeriksa fungsi preprocessing dan evaluasi model. Tahap ini membantu mendeteksi kesalahan kode sebelum proses training dan evaluasi dilanjutkan.
+
+**d. Data Preprocessing**
+
+Workflow menjalankan script preprocessing untuk mengolah dataset mentah menjadi dataset fitur yang siap digunakan dalam proses training.
+
+**e. Model Training**
+
+Workflow menjalankan script training untuk melatih beberapa konfigurasi Random Forest. Eksperimen training dicatat menggunakan MLflow sehingga parameter dan metrik setiap konfigurasi dapat dibandingkan.
+
+**f. Model Evaluation dan Quality Gate**
+
+Model dievaluasi menggunakan metrik RMSE, MAE, dan R². Hasil evaluasi diperiksa melalui mekanisme quality gate untuk menentukan apakah model memenuhi kriteria penerimaan.
+
+Kriteria quality gate yang digunakan meliputi:
+- RMSE maksimum sebesar 0.95 USD/gram.
+- Peningkatan relatif minimal 2% dibandingkan baseline yang dapat dibandingkan secara valid.
+
+Hasil evaluasi disimpan dalam file:
+
+`reports/evaluation.json`
+
+**g. Conditional Model Registration**
+
+Registrasi model ke MLflow Model Registry dilakukan secara kondisional. Model hanya dapat didaftarkan apabila memenuhi kriteria quality gate yang ditentukan. Apabila model tidak memenuhi kriteria, proses registrasi dilewati agar model yang belum memenuhi standar tidak otomatis dipromosikan ke tahap Staging.
+
+## 4. Dataset dan Data Versioning
+
+Pipeline menggunakan dataset yang telah dikelola menggunakan Data Version Control (DVC). Metadata pelacakan dataset disimpan pada:
+
+`data/raw.dvc`
+
+Dataset mentah yang digunakan dalam implementasi LK-08 merupakan dataset yang telah dilacak dalam repository. Dengan demikian, proses preprocessing dan training menggunakan dataset yang tersedia pada versi repository yang dijalankan.
+
+Penggunaan DVC membantu menjaga keterlacakan versi dataset yang digunakan dalam eksperimen machine learning.
+
+## 5. Hasil Eksekusi Automation Pipeline
+
+Workflow GitHub Actions berhasil dijalankan setelah perubahan kode dikirim ke branch `main`.
+
+Tahapan pengujian otomatis, preprocessing, training, dan evaluasi dapat dieksekusi. Hasil evaluasi pada salah satu eksekusi pipeline adalah sebagai berikut:
+
+| Metrik | Hasil |
+|---|---:|
+| RMSE | 1.958586 USD/gram |
+| MAE | 1.556379 USD/gram |
+| R² | 0.939827 |
+| Jumlah data pengujian | 124 |
+| Batas maksimum RMSE | 0.95 USD/gram |
+| Quality Gate | FAIL |
+
+Nilai RMSE sebesar 1.958586 USD/gram masih melebihi batas maksimum 0.95 USD/gram. Oleh karena itu, model belum memenuhi kriteria quality gate dan registrasi model otomatis dilewati.
+
+Pemeriksaan peningkatan relatif terhadap baseline juga belum dapat dievaluasi karena baseline yang tersedia tidak berasal dari dataset yang sama dan belum memenuhi syarat perbandingan yang valid.
+
+## 6. Evaluasi Hasil Workflow
+
+Status keberhasilan workflow GitHub Actions dan status quality gate merupakan dua hal yang berbeda.
+
+Workflow dapat berhasil menjalankan seluruh tahapan teknis, menghasilkan laporan evaluasi, dan menyelesaikan proses otomatisasi. Namun, hasil evaluasi model tetap dapat menunjukkan status FAIL apabila metrik belum memenuhi kriteria yang ditentukan.
+
+Dengan demikian, keberhasilan eksekusi workflow tidak selalu berarti model berhasil melewati quality gate. Mekanisme ini memastikan bahwa model yang belum memenuhi standar evaluasi tidak otomatis didaftarkan ke MLflow Model Registry.
+
+## 7. Artefak dan Hasil Otomatisasi
+
+Pipeline menghasilkan beberapa artefak penting, antara lain:
+
+- Laporan evaluasi model: `reports/evaluation.json`.
+- Workflow otomatisasi: `.github/workflows/mlops-automation.yaml`.
+- Script evaluasi dan registrasi model: `src/evaluate_and_register.py`.
+- Pengujian otomatis: `tests/test_preprocess.py` dan `tests/test_evaluate.py`.
+
+Laporan evaluasi juga disimpan sebagai workflow artifact dengan nama `model-evaluation-report`, sehingga hasil eksekusi dapat diperiksa kembali melalui halaman GitHub Actions.
+
+## 8. Kesimpulan
+
+Implementasi LK-08 berhasil mengintegrasikan GitHub Actions sebagai pemicu otomatisasi pipeline MLOps. Perubahan kode pada repository dapat memicu proses automated testing, preprocessing, training, dan evaluasi model secara berurutan.
+
+Mekanisme quality gate diterapkan untuk memastikan bahwa registrasi model dilakukan berdasarkan kriteria evaluasi yang telah ditentukan. Pada hasil evaluasi yang diperoleh, model belum memenuhi batas maksimum RMSE sehingga registrasi otomatis tidak dilanjutkan.
+
+Implementasi ini menunjukkan bahwa otomatisasi MLOps tidak hanya bertujuan menjalankan proses machine learning secara otomatis, tetapi juga menerapkan mekanisme kontrol kualitas sebelum model dapat didaftarkan untuk tahap berikutnya.
 ---
 
 ## LK-09 — Docker Compose Orchestration
