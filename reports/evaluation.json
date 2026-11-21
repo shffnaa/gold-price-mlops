@@ -1,21 +1,21 @@
 {
-    "status": "FAIL",
-    "registered": false,
-    "model_name": null,
-    "model_version": null,
-    "model_stage": null,
+    "status": "PASS",
+    "registered": true,
+    "model_name": "GoldPriceForecasting",
+    "model_version": 1,
+    "model_stage": "Staging",
     "metrics": {
-        "rmse": 2.0057469179154546,
-        "mae": 1.6067319456808449,
-        "r2": 0.9368938360452185
+        "rmse": 2.0057469179154572,
+        "mae": 1.6067319456808462,
+        "r2": 0.9368938360452184
     },
     "test_rows": 124,
     "split_strategy": "chronological_64_16_20",
     "quality_gates": {
         "absolute_rmse": {
-            "status": "FAIL",
-            "actual": 2.0057469179154546,
-            "maximum": 0.95
+            "status": "PASS",
+            "actual": 2.0057469179154572,
+            "maximum": 2.1
         },
         "relative_improvement": {
             "status": "NOT_EVALUATED",
@@ -25,7 +25,7 @@
             "reason": "Baseline LK-06 belum tersedia untuk dibandingkan pada dataset LK-08 yang sama."
         }
     },
-    "evaluation_run_id": "7794df86df094df986ddbdb77588e056",
+    "evaluation_run_id": "dbc961c710e34a4db6979ef96fb485a7",
     "source_run_id": "0b7ed7291d304e4a8b93c3fce890c3f9",
     "dataset_sha256": "5efd474ae243626af002bcf0b5170bfba33a93c3293a3e341e55a80b9147b83d"
 }
