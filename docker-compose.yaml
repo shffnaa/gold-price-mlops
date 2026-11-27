@@ -119,6 +119,28 @@ services:
     depends_on:
       api-service:
         condition: service_healthy
+  model-serving:
+    image: goldprice-model-serving:latest
+    restart: unless-stopped
+    expose:
+      - "8080"
+    networks:
+      - goldprice-network
+    deploy:
+      replicas: 3
+
+  model-load-balancer:
+    image: haproxy:3.2-alpine
+    container_name: goldprice-model-load-balancer
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    volumes:
+      - ./docker/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - goldprice-network
+    depends_on:
+      - model-serving
 
 networks:
   goldprice-network:
