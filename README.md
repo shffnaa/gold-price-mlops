@@ -704,3 +704,252 @@ Hasil pengujian menunjukkan bahwa:
 7. Named volume berhasil dikonfigurasi untuk menjaga persistensi data PostgreSQL dan artefak MLflow.
 
 Dengan implementasi ini, seluruh komponen aplikasi dapat dijalankan melalui satu konfigurasi Docker Compose. Hal tersebut membuat proses deployment, pengelolaan layanan, dan reproduksi lingkungan aplikasi menjadi lebih terstruktur.
+
+---
+
+## LK-10 — Model Serving, Containerization, dan Load Balancing
+
+### 1. Tujuan
+
+Praktikum LK-10 bertujuan untuk menerapkan model serving dan deployment model machine learning menggunakan MLflow, Docker, dan Docker Compose.
+
+Pada tahap ini, model terbaik dari MLflow Model Registry disiapkan untuk melayani prediksi melalui REST API. Model kemudian dikemas menjadi Docker image dan dijalankan menggunakan tiga replica yang terhubung dengan HAProxy sebagai load balancer.
+
+Implementasi ini bertujuan meningkatkan ketersediaan layanan inferensi serta mendistribusikan request ke beberapa instance model.
+
+### 2. Model Registry dan Production Alias
+
+Model yang digunakan pada praktikum LK-10 adalah `GoldPriceForecasting` versi 1 yang telah terdaftar pada MLflow Model Registry.
+
+Model memiliki status `READY` dan menggunakan alias `production` sebagai referensi model aktif.
+
+Pada MLflow versi 3.18, alias digunakan untuk menentukan model yang akan digunakan dalam proses serving.
+
+Model dapat diakses melalui MLflow UI:
+
+```text
+http://localhost:5000
+```
+
+Referensi model:
+
+```text
+models:/GoldPriceForecasting@production
+```
+
+### 3. Menjalankan Model Serving Secara Lokal
+
+Sebelum dilakukan containerization, model dijalankan secara lokal menggunakan perintah `mlflow models serve`.
+
+Perintah yang digunakan:
+
+```bash
+MLFLOW_TRACKING_URI=http://localhost:5000 mlflow models serve \
+  -m "models:/GoldPriceForecasting@production" \
+  -h 0.0.0.0 \
+  -p 5002 \
+  --env-manager local
+```
+
+Model serving berjalan pada port `5002`.
+
+Pemeriksaan ketersediaan endpoint dilakukan menggunakan:
+
+```bash
+curl -i http://localhost:5002/ping
+```
+
+Pengujian inferensi dapat dilakukan melalui endpoint:
+
+```text
+POST http://localhost:5002/invocations
+```
+
+### 4. Containerization Menggunakan MLflow
+
+Model kemudian dikemas menjadi Docker image menggunakan perintah `mlflow models build-docker`.
+
+Perintah:
+
+```bash
+MLFLOW_TRACKING_URI=http://localhost:5000 mlflow models build-docker \
+  -m "models:/GoldPriceForecasting@production" \
+  -n goldprice-model-serving
+```
+
+Docker image yang dihasilkan adalah:
+
+```text
+goldprice-model-serving:latest
+```
+
+Image tersebut digunakan sebagai dasar untuk menjalankan beberapa instance model-serving melalui Docker Compose.
+
+Pemeriksaan image:
+
+```bash
+docker images
+```
+
+### 5. Konfigurasi Model Serving dan Load Balancer
+
+Pada LK-10, konfigurasi Docker Compose dikembangkan dengan menambahkan dua service baru, yaitu:
+
+| Service | Fungsi |
+|---|---|
+| `model-serving` | Menjalankan model MLflow dalam container |
+| `model-load-balancer` | Mendistribusikan request menggunakan HAProxy |
+
+Service `model-serving` menggunakan image `goldprice-model-serving:latest` dan terhubung ke custom bridge network `goldprice-network`.
+
+Konfigurasi replica ditambahkan pada service model-serving:
+
+```yaml
+deploy:
+  replicas: 3
+```
+
+Jumlah replica dijalankan secara eksplisit menggunakan opsi `--scale` pada Docker Compose.
+
+HAProxy dikonfigurasi melalui file:
+
+```text
+docker/haproxy/haproxy.cfg
+```
+
+HAProxy menggunakan algoritma `roundrobin` untuk mendistribusikan request secara bergantian ke instance model-serving yang tersedia.
+
+Load balancer menerima request melalui port `5001` dan meneruskannya ke port internal `8080` pada container model-serving.
+
+### 6. Menjalankan Tiga Replica Model Serving
+
+Untuk menjalankan tiga replica model-serving beserta HAProxy, digunakan perintah:
+
+```bash
+docker compose up -d --scale model-serving=3 model-serving model-load-balancer
+```
+
+Pemeriksaan status container dilakukan menggunakan:
+
+```bash
+docker compose ps -a
+```
+
+Hasil implementasi menunjukkan tiga container model-serving berjalan secara bersamaan:
+
+- `gold-price-mlops-model-serving-1`
+- `gold-price-mlops-model-serving-2`
+- `gold-price-mlops-model-serving-3`
+
+Ketiga replica terhubung melalui custom bridge network `goldprice-network`, sehingga HAProxy dapat meneruskan request ke instance model-serving.
+
+### 7. Pengujian Endpoint dan Inferensi
+
+Pengujian dilakukan melalui endpoint HAProxy pada port `5001`.
+
+Pemeriksaan ketersediaan model:
+
+```bash
+curl -i http://localhost:5001/ping
+```
+
+Pengujian inferensi menggunakan endpoint:
+
+```text
+POST http://localhost:5001/invocations
+```
+
+Request dikirim menggunakan metode POST dengan format JSON sesuai signature model MLflow.
+
+Contoh perintah pengujian menggunakan file payload JSON:
+
+```bash
+curl -X POST http://localhost:5001/invocations \
+  -H "Content-Type: application/json" \
+  -d @payload.json
+```
+
+Salah satu hasil pengujian inferensi menghasilkan respons:
+
+```json
+{
+  "predictions": [124.00584790891915]
+}
+```
+
+Pengujian menunjukkan bahwa endpoint berhasil memproses request dan menghasilkan prediksi harga emas dengan respons HTTP 200.
+
+### 8. Verifikasi Load Balancing (Round-Robin)
+
+Untuk memastikan request didistribusikan ke beberapa replica, dilakukan pemeriksaan log HAProxy menggunakan perintah:
+
+```bash
+docker compose logs --since=2m model-load-balancer | grep 'POST /invocations'
+```
+
+Hasil log menunjukkan distribusi request secara bergantian ke tiga replica:
+
+```text
+model_replicas/model3
+model_replicas/model1
+model_replicas/model2
+model_replicas/model3
+model_replicas/model1
+model_replicas/model2
+```
+
+Seluruh request yang diperiksa berhasil memperoleh respons HTTP 200.
+
+Hasil tersebut menunjukkan bahwa konfigurasi algoritma round-robin pada HAProxy berhasil mendistribusikan request ke instance model-serving yang tersedia.
+
+### 9. Dynamic Scaling
+
+Docker Compose memungkinkan jumlah replica model-serving disesuaikan berdasarkan kebutuhan layanan.
+
+Untuk meningkatkan jumlah replica menjadi lima:
+
+```bash
+docker compose up -d --scale model-serving=5 model-serving model-load-balancer
+```
+
+Untuk mengembalikan jumlah replica menjadi tiga:
+
+```bash
+docker compose up -d --scale model-serving=3 model-serving model-load-balancer
+```
+
+Pemeriksaan jumlah replica dilakukan menggunakan:
+
+```bash
+docker compose ps
+```
+
+Dengan mekanisme ini, kapasitas layanan inferensi dapat disesuaikan tanpa perlu membangun ulang Docker image.
+
+### 10. Hasil Implementasi
+
+Implementasi LK-10 berhasil menjalankan model machine learning sebagai layanan inferensi menggunakan MLflow, Docker, Docker Compose, dan HAProxy.
+
+Hasil pengujian menunjukkan bahwa:
+
+1. Model `GoldPriceForecasting` versi 1 berhasil digunakan melalui alias `production` pada MLflow Model Registry.
+2. Model berhasil dijalankan secara lokal menggunakan `mlflow models serve`.
+3. Model berhasil dikemas menjadi Docker image `goldprice-model-serving:latest`.
+4. Docker Compose berhasil menjalankan tiga replica model-serving.
+5. HAProxy berhasil meneruskan request inferensi ke replica model-serving.
+6. Endpoint inferensi melalui port `5001` berhasil menghasilkan respons HTTP 200.
+7. Log HAProxy menunjukkan distribusi request secara bergantian menggunakan algoritma round-robin.
+8. Jumlah replica dapat disesuaikan menggunakan opsi `--scale`.
+
+Dengan implementasi ini, proyek Gold Price Forecasting telah memiliki layanan model serving yang tercontainerisasi dan mendukung distribusi request ke beberapa replica.
+
+### 11. Dokumentasi dan Bukti Pengujian
+
+Bukti implementasi praktikum LK-10 meliputi:
+
+- Tampilan MLflow Model Registry yang menunjukkan model `GoldPriceForecasting` dan alias `production`.
+- Terminal ketika menjalankan `mlflow models serve` secara lokal.
+- Pengujian endpoint inferensi dan hasil prediksi.
+- Docker image `goldprice-model-serving`.
+- Output `docker compose ps -a` yang menunjukkan tiga replica aktif.
+- Log HAProxy yang menunjukkan distribusi request ke tiga replica.
